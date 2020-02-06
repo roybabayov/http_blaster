@@ -239,12 +239,12 @@ LOOP:
 			self.results.Max = wresults.Max
 		}
 
-		self.results.Avg +=
-			time.Duration(float64(wresults.Count) / float64(self.results.Total) * float64(wresults.Avg))
+		self.results.Avg += time.Duration(wresults.Count * uint64(wresults.Avg))
 		for k, v := range wresults.Codes {
 			self.results.Statuses[k] += v
 		}
 	}
+	self.results.Avg = time.Duration(float64(self.results.Avg) / float64(self.results.Total))
 
 	seconds := uint64(self.results.Duration.Seconds())
 	if seconds == 0 {

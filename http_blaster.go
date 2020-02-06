@@ -281,7 +281,7 @@ func report() int {
 			overall_get_executors ++
 			overall_get_requests += results.Total
 			overall_get_iops += results.Iops
-			overall_get_avg_lat += results.Avg
+			overall_get_avg_lat += time.Duration(uint64(results.Avg) * results.Total)
 			if overall_get_lat_max < results.Max {
 				overall_get_lat_max = results.Max
 			}
@@ -295,7 +295,7 @@ func report() int {
 			overall_put_executors++
 			overall_put_requests += results.Total
 			overall_put_iops += results.Iops
-			overall_put_avg_lat += results.Avg
+			overall_put_avg_lat += time.Duration(uint64(results.Avg) * results.Total)
 			if overall_put_lat_max < results.Max {
 				overall_put_lat_max = results.Max
 			}
@@ -306,15 +306,10 @@ func report() int {
 				overall_put_lat_min = results.Min
 			}
 		}
-
 		overall_iops += results.Iops
 	}
-	if overall_get_requests != 0 {
-		overall_get_avg_lat = time.Duration(float64(overall_get_avg_lat) / float64(overall_get_executors))
-	}
-	if overall_put_requests != 0 {
-		overall_put_avg_lat = time.Duration(float64(overall_put_avg_lat) / float64(overall_put_executors))
-	}
+	overall_get_avg_lat = time.Duration(float64(overall_get_avg_lat) / float64(overall_get_requests))
+	overall_put_avg_lat = time.Duration(float64(overall_put_avg_lat) / float64(overall_put_requests))
 
 	report_executor_result(results_file)
 
@@ -503,7 +498,7 @@ func remap_latency_histogram(hist map[int64]int) map[int64]int {
 func dump_latency_histogram(histogram map[int64]int, total int, req_type string) ([]string, []float64) {
 	var keys []int
 	var prefix string
-	title := "type \t usec \t\t percentage\n"
+	title := fmt.Sprintf("% -10s % -15s % -10s\n", "type", "usec", "percentage")
 	if req_type == "GET" {
 		prefix = "GetHist"
 	} else {
@@ -515,13 +510,18 @@ func dump_latency_histogram(histogram map[int64]int, total int, req_type string)
 		keys = append(keys, int(k))
 	}
 	sort.Ints(keys)
+	keys_len := len(keys)
 	log.Debugln("latency hist wait released")
 	res_strings := []string{}
 	res_values := []float64{}
 
-	for _, k := range keys {
+	for i, k := range keys {
 		v := hist[int64(k)]
-		res_strings = append(res_strings, fmt.Sprintf("%d", k*100))
+		if i < keys_len -1 {
+			res_strings = append(res_strings, fmt.Sprintf("%d-%d", k*100, keys[i+1]*100))
+		} else {
+			res_strings = append(res_strings, fmt.Sprintf("%d+", k*100))
+		}
 		value := float64(v*100) / float64(total)
 		res_values = append(res_values, value)
 	}
@@ -529,7 +529,7 @@ func dump_latency_histogram(histogram map[int64]int, total int, req_type string)
 	if len(res_strings) > 0 {
 		strout += title
 		for i, v := range res_strings {
-			strout += fmt.Sprintf("%s: %5s \t\t %3.4f%%\n", prefix, v, res_values[i])
+			strout += fmt.Sprintf("% -10s % -15s % -3.4f%%\n", prefix, v, res_values[i])
 		}
 	}
 	log.Println(strout)

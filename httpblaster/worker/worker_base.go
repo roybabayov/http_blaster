@@ -13,6 +13,7 @@ import (
 	"github.com/valyala/fasthttp"
 	"io/ioutil"
 	"net"
+	"encoding/json"
 	"os"
 	"sync"
 	"time"
@@ -110,11 +111,20 @@ func (w *WorkerBase) restart_connection() {
 	w.Results.ConnectionRestarts++
 }
 
+func JSON(str string) bool {
+    var jsonStr map[string]interface{}
+    err := json.Unmarshal([]byte(str), &jsonStr)
+    return  err == nil
+}
+var req_counter = 0
 func (w *WorkerBase) send(req *fasthttp.Request, resp *fasthttp.Response,
 	timeout time.Duration) (error, time.Duration) {
 	var err error
+	resp.Reset()
+	req_counter++
 	go func() {
 		start := time.Now()
+		req.Header.Add("ngx-guid", fmt.Sprintf("%d",start.UnixNano()))
 		if err = req.Write(w.bw); err != nil {
 			log.Debugf("send write error: %s\n", err)
 			log.Debugln(fmt.Sprintf("%+v", req))
@@ -122,6 +132,7 @@ func (w *WorkerBase) send(req *fasthttp.Request, resp *fasthttp.Response,
 			return
 		} else if err = w.bw.Flush(); err != nil {
 			log.Debugf("send flush error: %s\n", err)
+			log.Debugln(fmt.Sprintf("%+v", req))
 			w.ch_error <- err
 			return
 		} else if err = resp.Read(w.br); err != nil {
@@ -131,8 +142,14 @@ func (w *WorkerBase) send(req *fasthttp.Request, resp *fasthttp.Response,
 		}
 		end := time.Now()
 		w.ch_duration <- end.Sub(start)
+		if string(req.Header.Method()) == "GET" && resp.StatusCode() == 200 {
+			resp_headers := resp.Header.String()
+			resp_body := string(resp.Body())
+			if !JSON(resp_body) {
+				log.Fatalln(fmt.Sprintf("\nrb_testing bad json format:\n{resp_headers_start}\n%+v\n{resp_headers_end}\n{resp_body_start}\n%+v\n{resp_body_end}\n{req_counter}%+v\n", resp_headers, resp_body, req_counter))
+			}
+		}
 	}()
-
 	w.timer.Reset(timeout)
 	select {
 	case duration := <-w.ch_duration:
